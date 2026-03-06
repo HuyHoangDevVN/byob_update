@@ -9,3 +9,5 @@ ADD NEW REMOTE MODULE:
 BUG:
 + Cannot create payload => delete output folder
 + python3.6
+RUN:
+sudo python3.6 run.py
