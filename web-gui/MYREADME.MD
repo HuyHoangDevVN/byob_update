@@ -12,6 +12,7 @@ chmode +x bot
 sudo ./but
 BUG:
 + Cannot create payload => delete output folder
-+ python3.6
++ use python 3.8 
 RUN:
-sudo python3.6 run.py
+conda activate python38
+python run.py
