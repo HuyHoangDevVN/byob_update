@@ -120,9 +120,11 @@
 									  	<input class="form-control" name="ddos-target-ip" id="ddos-target-ip" placeholder="Target IP" type="text" required></input>
 
 									  	<select class="form-control" name="ddos-type" id="ddos-type" style="margin-top: 5px;">
-											<option value="syn">SYN Flood</option>
-											<option value="icmp">ICMP Flood</option>
+											<option value="syn">TCP Probe</option>
+											<option value="icmp">ICMP Probe</option>
 										</select>
+
+									  	<input class="form-control" name="ddos-port" id="ddos-port" placeholder="TCP Port (default: 80)" type="number" min="1" max="65535" style="margin-top: 5px;"></input>
 
 									</div>
 
@@ -729,10 +731,11 @@
 					<img src="/assets/images/os/win32.png" width="30" height="30" style="padding: 2px">
 					<img src="/assets/images/os/linux2.png" width="30" height="30" style="padding: 2px">
 					<img src="/assets/images/os/darwin.png" width="30" height="30" style="padding: 2px">`);
-				$('#module-description').html(`<p>Perform Distributed Denial of Service (DDoS) attacks using SYN or ICMP flood techniques.</p>`);
+				$('#module-description').html(`<p>Run a bounded network probe using either a TCP connect check or a single ICMP echo.</p>`);
 				$('#module-info').html(`
-					<li><strong>Target IP</strong> IP address of the target to attack</li>
-					<li><strong>Attack Type</strong> SYN Flood (port 80) or ICMP Flood</li>`);
+					<li><strong>Target IP</strong> Hostname or IP address to probe</li>
+					<li><strong>Probe Type</strong> TCP Probe or ICMP Probe</li>
+					<li><strong>TCP Port</strong> Optional port for TCP Probe; defaults to 80</li>`);
 			} else {
 				$('#ddos-label').hide();
 				$('#ddos').hide();
@@ -770,7 +773,11 @@
 			} else if (action == 'ddos') {
 				var ddos_target_ip = $('#ddos-target-ip').val();
 				var ddos_type = $('#ddos-type').val();
+				var ddos_port = $('#ddos-port').val();
 				params += ddos_target_ip + ' ' + ddos_type;
+				if (ddos_type === 'syn' && ddos_port) {
+					params += ' ' + ddos_port;
+				}
 
 			}
 
@@ -854,6 +861,20 @@
 			$('#module').selectBoxIt().change(function(){
 				updateModule();
 			});
+		});
+
+		$(document).ready(function(){
+			function toggleDdosPort() {
+				var probeType = $('#ddos-type').val();
+				var isTcpProbe = probeType === 'syn';
+				$('#ddos-port').prop('disabled', !isTcpProbe);
+				if (!isTcpProbe) {
+					$('#ddos-port').val('');
+				}
+			}
+
+			$('#ddos-type').change(toggleDdosPort);
+			toggleDdosPort();
 		});
 
 		$(document).ready(function(){

